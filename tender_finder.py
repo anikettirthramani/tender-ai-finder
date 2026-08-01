@@ -1,4 +1,5 @@
 import os
+import json
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
@@ -8,6 +9,8 @@ CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 BASE_URL = "https://www.mahagenco.in"
 TENDER_URL = "https://www.mahagenco.in/tenders"
+
+SEEN_FILE = "seen_tenders.json"
 
 KEYWORDS = [
     "fly ash",
@@ -56,6 +59,39 @@ def clean_text(text):
     return " ".join(
         text.split()
     )
+
+
+def load_seen():
+
+    if not os.path.exists(
+        SEEN_FILE
+    ):
+        return []
+
+    with open(
+        SEEN_FILE,
+        "r",
+        encoding="utf-8"
+    ) as file:
+
+        return json.load(
+            file
+        )
+
+
+def save_seen(links):
+
+    with open(
+        SEEN_FILE,
+        "w",
+        encoding="utf-8"
+    ) as file:
+
+        json.dump(
+            links,
+            file,
+            indent=2
+        )
 
 
 def get_title_before_link(link):
@@ -117,7 +153,7 @@ def get_matching_tenders():
     )
 
     matches = []
-    seen_links = set()
+    found_links = set()
 
     for link in soup.find_all(
         "a",
@@ -134,20 +170,20 @@ def get_matching_tenders():
         if "download" not in link_text:
             continue
 
-        tender_title = (
+        title = (
             get_title_before_link(
                 link
             )
         )
 
-        if not tender_title:
+        if not title:
             continue
 
         title_lower = (
-            tender_title.lower()
+            title.lower()
         )
 
-        matched_words = [
+        matched = [
 
             keyword
 
@@ -157,7 +193,7 @@ def get_matching_tenders():
 
         ]
 
-        if not matched_words:
+        if not matched:
             continue
 
         tender_link = urljoin(
@@ -165,17 +201,17 @@ def get_matching_tenders():
             link["href"]
         )
 
-        if tender_link in seen_links:
+        if tender_link in found_links:
             continue
 
-        seen_links.add(
+        found_links.add(
             tender_link
         )
 
         matches.append({
-            "title": tender_title,
+            "title": title,
             "link": tender_link,
-            "matched": matched_words
+            "matched": matched
         })
 
     return matches
@@ -183,20 +219,36 @@ def get_matching_tenders():
 
 try:
 
+    seen = set(
+        load_seen()
+    )
+
     tenders = (
         get_matching_tenders()
     )
 
-    if tenders:
+    new_tenders = [
+
+        tender
+
+        for tender in tenders
+
+        if tender["link"]
+        not in seen
+
+    ]
+
+    if new_tenders:
 
         message = (
-            "🔔 RELEVANT MAHAGENCO "
-            "TENDERS\n\n"
-            f"Found: {len(tenders)}\n\n"
+            "🔔 NEW RELEVANT "
+            "MAHAGENCO TENDERS\n\n"
+            f"New tenders: "
+            f"{len(new_tenders)}\n\n"
         )
 
         for number, tender in enumerate(
-            tenders[:5],
+            new_tenders[:5],
             start=1
         ):
 
@@ -210,22 +262,31 @@ try:
                 "━━━━━━━━━━\n\n"
             )
 
-    else:
-
-        message = (
-            "📋 MAHAGENCO Search Complete\n\n"
-            "No relevant tender was found "
-            "for your selected categories."
+        send_telegram(
+            message
         )
 
-    send_telegram(
-        message
-    )
+        seen.update(
+            tender["link"]
+            for tender
+            in new_tenders
+        )
 
-    print(
-        f"Relevant tenders: "
-        f"{len(tenders)}"
-    )
+        save_seen(
+            sorted(seen)
+        )
+
+        print(
+            f"New tenders sent: "
+            f"{len(new_tenders)}"
+        )
+
+    else:
+
+        print(
+            "No new relevant "
+            "tenders found."
+        )
 
 except Exception as error:
 
