@@ -166,32 +166,18 @@ def get_matching_tenders():
 
 try:
 
-    seen = load_seen_tenders()
+    tenders = get_matching_tenders()
 
-    tenders = (
-        get_matching_tenders()
+    message = (
+        "🔍 MAHAGENCO Tender Test\n\n"
+        f"Matching tender links found: "
+        f"{len(tenders)}\n\n"
     )
 
-    new_tenders = [
-
-        tender
-
-        for tender in tenders
-
-        if tender["link"]
-        not in seen
-
-    ]
-
-    if new_tenders:
-
-        message = (
-            "🔔 NEW MAHAGENCO "
-            "TENDER ALERT\n\n"
-        )
+    if tenders:
 
         for number, tender in enumerate(
-            new_tenders[:10],
+            tenders[:10],
             start=1
         ):
 
@@ -204,30 +190,24 @@ try:
                 f"{tender['link']}\n\n"
             )
 
-        send_telegram(
-            message
-        )
-
-        seen.extend(
-            tender["link"]
-            for tender
-            in new_tenders
-        )
-
-        save_seen_tenders(
-            seen
-        )
-
-        print(
-            "New tender alerts sent."
-        )
-
     else:
 
-        print(
-            "No new matching "
-            "tenders found."
+        message += (
+            "No matching tender titles "
+            "were found in the page links.\n\n"
+            "The website may load tender "
+            "data dynamically or use a "
+            "different HTML structure."
         )
+
+    send_telegram(
+        message
+    )
+
+    print(
+        f"Matching tenders: "
+        f"{len(tenders)}"
+    )
 
 except Exception as error:
 
@@ -241,3 +221,5 @@ except Exception as error:
     )
 
     print(error)
+
+    
