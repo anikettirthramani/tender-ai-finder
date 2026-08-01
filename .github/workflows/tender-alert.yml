@@ -1,5 +1,8 @@
 name: Tender AI Alert
 
+permissions:
+  contents: write
+
 on:
   schedule:
     - cron: "30 2 * * *"
