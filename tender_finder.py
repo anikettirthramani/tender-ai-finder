@@ -651,97 +651,140 @@ try:
 
     if active_tenders:
 
-        message = (
+        expired_count = 0
 
-            "🟢 ACTIVE "
+unknown_tenders = []
 
-            "MAHAGENCO TENDERS\n\n"
+active_tenders = []
 
-            f"Found: "
+for tender in new_tenders:
 
-            f"{len(active_tenders)}"
+    result = check_tender(
+        tender
+    )
 
-            "\n\n"
+    if result["status"] == "active":
 
+        tender["closing_date"] = (
+            result["date"]
         )
 
-        for number, tender in enumerate(
-
-            active_tenders[:5],
-
-            start=1
-
-        ):
-
-            message += (
-
-                f"{number}. "
-
-                f"{tender['title']}"
-
-                "\n\n"
-
-                f"Closing date: "
-
-                f"{tender['closing_date']}"
-
-                "\n"
-
-                f"Matched: "
-
-                f"{', '.join(tender['matched'])}"
-
-                "\n"
-
-                f"Document: "
-
-                f"{tender['link']}"
-
-                "\n\n"
-
-                "━━━━━━━━━━"
-
-                "\n\n"
-
-            )
-
-        send_telegram(
-
-            message
-
+        active_tenders.append(
+            tender
         )
 
-    seen.update(
+    elif result["status"] == "expired":
 
-        tender["link"]
+        expired_count += 1
 
-        for tender
+    else:
 
-        in new_tenders
+        unknown_tenders.append(
+            tender
+        )
 
+
+message = (
+    "📋 MAHAGENCO TENDER SCAN\n\n"
+    f"Relevant notices found: "
+    f"{len(tenders)}\n"
+    f"New notices checked: "
+    f"{len(new_tenders)}\n\n"
+    f"🟢 Active: "
+    f"{len(active_tenders)}\n"
+    f"🔴 Expired: "
+    f"{expired_count}\n"
+    f"🟡 Date not found: "
+    f"{len(unknown_tenders)}\n\n"
+)
+
+
+if active_tenders:
+
+    message += (
+        "🟢 ACTIVE TENDERS\n\n"
     )
 
-    save_seen(
+    for number, tender in enumerate(
+        active_tenders[:5],
+        start=1
+    ):
 
-        sorted(seen)
+        message += (
+            f"{number}. "
+            f"{tender['title']}\n\n"
+            f"Closing date: "
+            f"{tender['closing_date']}\n"
+            f"Matched: "
+            f"{', '.join(tender['matched'])}\n"
+            f"Document: "
+            f"{tender['link']}\n\n"
+            "━━━━━━━━━━\n\n"
+        )
 
+else:
+
+    message += (
+        "Status: No new active "
+        "tender found today. ✅\n\n"
     )
 
-    print(
 
-        "New tenders checked:",
+if unknown_tenders:
 
-        len(new_tenders)
-
+    message += (
+        "🟡 REVIEW MANUALLY\n\n"
     )
 
-    print(
+    for number, tender in enumerate(
+        unknown_tenders[:3],
+        start=1
+    ):
 
-        "Active tenders:",
+        message += (
+            f"{number}. "
+            f"{tender['title']}\n"
+            f"Document: "
+            f"{tender['link']}\n\n"
+        )
 
-        len(active_tenders)
 
-    )
+send_telegram(
+    message
+)
+
+
+seen.update(
+    tender["link"]
+    for tender
+    in new_tenders
+)
+
+
+save_seen(
+    sorted(seen)
+)
+
+
+print(
+    "New tenders checked:",
+    len(new_tenders)
+)
+
+print(
+    "Active tenders:",
+    len(active_tenders)
+)
+
+print(
+    "Expired tenders:",
+    expired_count
+)
+
+print(
+    "Date not found:",
+    len(unknown_tenders)
+)
 
 except Exception as error:
 
