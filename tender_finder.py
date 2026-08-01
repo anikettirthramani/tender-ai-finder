@@ -163,56 +163,71 @@ def get_matching_tenders():
 
     return matches
 
-
 try:
 
-    tenders = get_matching_tenders()
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 "
+            "(Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 "
+            "Chrome/131.0 Safari/537.36"
+        )
+    }
 
-    message = (
-        "🔍 MAHAGENCO Tender Test\n\n"
-        f"Matching tender links found: "
-        f"{len(tenders)}\n\n"
+    response = requests.get(
+        TENDER_URL,
+        headers=headers,
+        timeout=60
     )
 
-    if tenders:
+    response.raise_for_status()
 
-        for number, tender in enumerate(
-            tenders[:10],
-            start=1
-        ):
+    soup = BeautifulSoup(
+        response.text,
+        "html.parser"
+    )
 
-            message += (
-                f"{number}. "
-                f"{tender['title']}\n"
-                f"Matched: "
-                f"{', '.join(tender['matched'])}\n"
-                f"Link: "
-                f"{tender['link']}\n\n"
-            )
+    page_title = ""
 
-    else:
-
-        message += (
-            "No matching tender titles "
-            "were found in the page links.\n\n"
-            "The website may load tender "
-            "data dynamically or use a "
-            "different HTML structure."
+    if soup.title:
+        page_title = soup.title.get_text(
+            " ",
+            strip=True
         )
+
+    all_links = soup.find_all(
+        "a",
+        href=True
+    )
+
+    page_text = soup.get_text(
+        " ",
+        strip=True
+    )
+
+    message = (
+        "🔧 MAHAGENCO DIAGNOSTIC REPORT\n\n"
+        f"Status code: {response.status_code}\n"
+        f"Page title: {page_title}\n"
+        f"HTML size: {len(response.text)} characters\n"
+        f"Links found: {len(all_links)}\n"
+        f"Page text size: {len(page_text)} characters\n\n"
+        "First page text:\n"
+        + page_text[:2500]
+    )
 
     send_telegram(
         message
     )
 
     print(
-        f"Matching tenders: "
-        f"{len(tenders)}"
+        "Diagnostic report sent."
     )
 
 except Exception as error:
 
     error_message = (
-        "⚠️ Tender Finder Error\n\n"
+        "⚠️ Diagnostic Error\n\n"
         + str(error)
     )
 
