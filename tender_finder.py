@@ -1,9 +1,7 @@
 import os
-import json
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
-from datetime import datetime
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
@@ -33,137 +31,28 @@ KEYWORDS = [
     "loading"
 ]
 
-SEEN_FILE = "seen_tenders.json"
-
 
 def send_telegram(message):
 
-    api_url = (
+    url = (
         f"https://api.telegram.org/"
         f"bot{BOT_TOKEN}/sendMessage"
     )
 
-    data = {
-        "chat_id": CHAT_ID,
-        "text": message,
-        "disable_web_page_preview": True
-    }
-
     response = requests.post(
-        api_url,
-        data=data,
-        timeout=30
+        url,
+        data={
+            "chat_id": CHAT_ID,
+            "text": message,
+            "disable_web_page_preview": True
+        },
+        timeout=60
     )
 
     response.raise_for_status()
-
-
-def load_seen_tenders():
-
-    if not os.path.exists(SEEN_FILE):
-        return []
-
-    with open(
-        SEEN_FILE,
-        "r",
-        encoding="utf-8"
-    ) as file:
-
-        return json.load(file)
-
-
-def save_seen_tenders(tenders):
-
-    with open(
-        SEEN_FILE,
-        "w",
-        encoding="utf-8"
-    ) as file:
-
-        json.dump(
-            tenders,
-            file,
-            indent=2
-        )
 
 
 def get_matching_tenders():
-
-    headers = {
-        "User-Agent":
-        "Mozilla/5.0"
-    }
-
-    response = requests.get(
-        TENDER_URL,
-        headers=headers,
-        timeout=30
-    )
-
-    response.raise_for_status()
-
-    soup = BeautifulSoup(
-        response.text,
-        "html.parser"
-    )
-
-    matches = []
-
-    links = soup.find_all(
-        "a",
-        href=True
-    )
-
-    for link in links:
-
-        title = link.get_text(
-            " ",
-            strip=True
-        )
-
-        href = link.get(
-            "href"
-        )
-
-        if not title:
-            continue
-
-        title_lower = (
-            title.lower()
-        )
-
-        matched_words = [
-
-            keyword
-
-            for keyword in KEYWORDS
-
-            if keyword in title_lower
-
-        ]
-
-        if matched_words:
-
-            tender_link = urljoin(
-                BASE_URL,
-                href
-            )
-
-            tender = {
-                "title": title,
-                "link": tender_link,
-                "matched": matched_words
-            }
-
-            if tender not in matches:
-
-                matches.append(
-                    tender
-                )
-
-    return matches
-
-try:
 
     headers = {
         "User-Agent": (
@@ -187,47 +76,131 @@ try:
         "html.parser"
     )
 
-    page_title = ""
+    matches = []
+    seen_titles = set()
 
-    if soup.title:
-        page_title = soup.title.get_text(
+    for link in soup.find_all(
+        "a",
+        href=True
+    ):
+
+        link_text = link.get_text(
+            " ",
+            strip=True
+        ).lower()
+
+        if (
+            "download" not in link_text
+            and "tender" not in link_text
+        ):
+            continue
+
+        parent = link
+
+        for _ in range(5):
+
+            if parent.parent:
+                parent = parent.parent
+
+        block_text = parent.get_text(
             " ",
             strip=True
         )
 
-    all_links = soup.find_all(
-        "a",
-        href=True
+        block_lower = (
+            block_text.lower()
+        )
+
+        matched_words = [
+
+            keyword
+
+            for keyword in KEYWORDS
+
+            if keyword in block_lower
+
+        ]
+
+        if not matched_words:
+            continue
+
+        title = block_text
+
+        if len(title) > 700:
+
+            title = title[:700] + "..."
+
+        if title in seen_titles:
+            continue
+
+        seen_titles.add(
+            title
+        )
+
+        tender_link = urljoin(
+            BASE_URL,
+            link["href"]
+        )
+
+        matches.append({
+            "title": title,
+            "link": tender_link,
+            "matched": matched_words
+        })
+
+    return matches
+
+
+try:
+
+    tenders = (
+        get_matching_tenders()
     )
 
-    page_text = soup.get_text(
-        " ",
-        strip=True
-    )
+    if tenders:
 
-    message = (
-        "🔧 MAHAGENCO DIAGNOSTIC REPORT\n\n"
-        f"Status code: {response.status_code}\n"
-        f"Page title: {page_title}\n"
-        f"HTML size: {len(response.text)} characters\n"
-        f"Links found: {len(all_links)}\n"
-        f"Page text size: {len(page_text)} characters\n\n"
-        "First page text:\n"
-        + page_text[:2500]
-    )
+        message = (
+            "🔔 MAHAGENCO "
+            "MATCHING TENDERS\n\n"
+            f"Found: {len(tenders)}\n\n"
+        )
+
+        for number, tender in enumerate(
+            tenders[:5],
+            start=1
+        ):
+
+            message += (
+                f"{number}. "
+                f"{tender['title']}\n\n"
+                f"Matched: "
+                f"{', '.join(tender['matched'])}\n"
+                f"Document: "
+                f"{tender['link']}\n\n"
+                "━━━━━━━━━━\n\n"
+            )
+
+    else:
+
+        message = (
+            "📋 MAHAGENCO Search Complete\n\n"
+            "No matching tender blocks "
+            "were found."
+        )
 
     send_telegram(
         message
     )
 
     print(
-        "Diagnostic report sent."
+        f"Matching tenders: "
+        f"{len(tenders)}"
     )
 
 except Exception as error:
 
     error_message = (
-        "⚠️ Diagnostic Error\n\n"
+        "⚠️ Tender Finder Error\n\n"
         + str(error)
     )
 
@@ -236,5 +209,3 @@ except Exception as error:
     )
 
     print(error)
-
-    
