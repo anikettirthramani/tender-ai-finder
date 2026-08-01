@@ -8,7 +8,6 @@ from datetime import datetime
 
 from bs4 import BeautifulSoup
 from pypdf import PdfReader
-
 from urllib.parse import urljoin
 
 
@@ -100,9 +99,7 @@ def send_telegram(message):
 def clean_text(text):
 
     return " ".join(
-
         text.split()
-
     )
 
 
@@ -126,9 +123,18 @@ def load_seen():
 
         ) as file:
 
-            return json.load(
+            data = json.load(
                 file
             )
+
+            if isinstance(
+                data,
+                list
+            ):
+
+                return data
+
+            return []
 
     except Exception:
 
@@ -169,9 +175,7 @@ def get_title_before_link(link):
     while previous:
 
         title = clean_text(
-
             str(previous)
-
         )
 
         if (
@@ -203,9 +207,7 @@ def get_title_before_link(link):
         previous = (
 
             previous.find_previous(
-
                 string=True
-
             )
 
         )
@@ -280,9 +282,7 @@ def get_matching_tenders():
         title = (
 
             get_title_before_link(
-
                 link
-
             )
 
         )
@@ -292,9 +292,7 @@ def get_matching_tenders():
             continue
 
         title_lower = (
-
             title.lower()
-
         )
 
         matched = [
@@ -328,9 +326,7 @@ def get_matching_tenders():
             continue
 
         found_links.add(
-
             tender_link
-
         )
 
         matches.append({
@@ -351,9 +347,7 @@ def read_pdf_text(pdf_url):
     headers = {
 
         "User-Agent": (
-
             "Mozilla/5.0"
-
         )
 
     }
@@ -373,9 +367,7 @@ def read_pdf_text(pdf_url):
     reader = PdfReader(
 
         BytesIO(
-
             response.content
-
         )
 
     )
@@ -385,19 +377,14 @@ def read_pdf_text(pdf_url):
     for page in reader.pages[:5]:
 
         page_text = (
-
             page.extract_text()
-
         )
 
         if page_text:
 
             text += (
-
                 page_text
-
                 + "\n"
-
             )
 
     return text
@@ -434,9 +421,7 @@ def find_closing_date(text):
     ]
 
     text_lower = (
-
         text.lower()
-
     )
 
     for pattern in patterns:
@@ -463,9 +448,15 @@ def find_closing_date(text):
 
                 date_text
 
-                .replace("/", ".")
+                .replace(
+                    "/",
+                    "."
+                )
 
-                .replace("-", ".")
+                .replace(
+                    "-",
+                    "."
+                )
 
             )
 
@@ -493,9 +484,7 @@ def check_tender(tender):
         pdf_text = (
 
             read_pdf_text(
-
                 tender["link"]
-
             )
 
         )
@@ -503,9 +492,7 @@ def check_tender(tender):
         closing_date = (
 
             find_closing_date(
-
                 pdf_text
-
             )
 
         )
@@ -513,9 +500,7 @@ def check_tender(tender):
         if closing_date:
 
             today = (
-
                 datetime.now()
-
             )
 
             if closing_date < today:
@@ -523,17 +508,12 @@ def check_tender(tender):
                 return {
 
                     "status":
-
                     "expired",
 
                     "date":
 
-                    closing_date
-
-                    .strftime(
-
+                    closing_date.strftime(
                         "%d-%m-%Y"
-
                     )
 
                 }
@@ -541,17 +521,12 @@ def check_tender(tender):
             return {
 
                 "status":
-
                 "active",
 
                 "date":
 
-                closing_date
-
-                .strftime(
-
+                closing_date.strftime(
                     "%d-%m-%Y"
-
                 )
 
             }
@@ -559,11 +534,9 @@ def check_tender(tender):
         return {
 
             "status":
-
             "unknown",
 
             "date":
-
             "Not found"
 
         }
@@ -573,11 +546,9 @@ def check_tender(tender):
         return {
 
             "status":
-
             "unknown",
 
             "date":
-
             "Could not read"
 
         }
@@ -586,15 +557,11 @@ def check_tender(tender):
 try:
 
     seen = set(
-
         load_seen()
-
     )
 
     tenders = (
-
         get_matching_tenders()
-
     )
 
     new_tenders = [
@@ -613,178 +580,203 @@ try:
 
     active_tenders = []
 
+    unknown_tenders = []
+
+    expired_count = 0
+
+
     for tender in new_tenders:
 
         result = (
-
             check_tender(
-
                 tender
-
             )
-
         )
 
         if (
-
             result["status"]
-
             == "active"
-
         ):
 
             tender[
-
                 "closing_date"
-
             ] = (
-
                 result["date"]
-
             )
 
             active_tenders.append(
-
                 tender
-
             )
+
+        elif (
+            result["status"]
+            == "expired"
+        ):
+
+            expired_count += 1
+
+        else:
+
+            unknown_tenders.append(
+                tender
+            )
+
+
+    message = (
+
+        "📋 MAHAGENCO "
+        "TENDER SCAN\n\n"
+
+        f"Relevant notices found: "
+        f"{len(tenders)}\n"
+
+        f"New notices checked: "
+        f"{len(new_tenders)}\n\n"
+
+        f"🟢 Active: "
+        f"{len(active_tenders)}\n"
+
+        f"🔴 Expired: "
+        f"{expired_count}\n"
+
+        f"🟡 Date not found: "
+        f"{len(unknown_tenders)}\n\n"
+
+    )
+
 
     if active_tenders:
 
-        expired_count = 0
+        message += (
 
-unknown_tenders = []
+            "🟢 ACTIVE "
+            "TENDERS\n\n"
 
-active_tenders = []
-
-for tender in new_tenders:
-
-    result = check_tender(
-        tender
-    )
-
-    if result["status"] == "active":
-
-        tender["closing_date"] = (
-            result["date"]
         )
 
-        active_tenders.append(
-            tender
-        )
+        for number, tender in enumerate(
 
-    elif result["status"] == "expired":
+            active_tenders[:5],
 
-        expired_count += 1
+            start=1
+
+        ):
+
+            message += (
+
+                f"{number}. "
+
+                f"{tender['title']}\n\n"
+
+                f"Closing date: "
+
+                f"{tender['closing_date']}\n"
+
+                f"Matched: "
+
+                f"{', '.join(tender['matched'])}\n"
+
+                f"Document: "
+
+                f"{tender['link']}\n\n"
+
+                "━━━━━━━━━━\n\n"
+
+            )
 
     else:
 
-        unknown_tenders.append(
-            tender
+        message += (
+
+            "Status: No new active "
+            "tender found today. ✅\n\n"
+
         )
 
 
-message = (
-    "📋 MAHAGENCO TENDER SCAN\n\n"
-    f"Relevant notices found: "
-    f"{len(tenders)}\n"
-    f"New notices checked: "
-    f"{len(new_tenders)}\n\n"
-    f"🟢 Active: "
-    f"{len(active_tenders)}\n"
-    f"🔴 Expired: "
-    f"{expired_count}\n"
-    f"🟡 Date not found: "
-    f"{len(unknown_tenders)}\n\n"
-)
-
-
-if active_tenders:
-
-    message += (
-        "🟢 ACTIVE TENDERS\n\n"
-    )
-
-    for number, tender in enumerate(
-        active_tenders[:5],
-        start=1
-    ):
+    if unknown_tenders:
 
         message += (
-            f"{number}. "
-            f"{tender['title']}\n\n"
-            f"Closing date: "
-            f"{tender['closing_date']}\n"
-            f"Matched: "
-            f"{', '.join(tender['matched'])}\n"
-            f"Document: "
-            f"{tender['link']}\n\n"
-            "━━━━━━━━━━\n\n"
+
+            "🟡 REVIEW "
+            "MANUALLY\n\n"
+
         )
 
-else:
+        for number, tender in enumerate(
 
-    message += (
-        "Status: No new active "
-        "tender found today. ✅\n\n"
+            unknown_tenders[:3],
+
+            start=1
+
+        ):
+
+            message += (
+
+                f"{number}. "
+
+                f"{tender['title']}\n"
+
+                f"Document: "
+
+                f"{tender['link']}\n\n"
+
+            )
+
+
+    send_telegram(
+        message
     )
 
 
-if unknown_tenders:
+    seen.update(
 
-    message += (
-        "🟡 REVIEW MANUALLY\n\n"
+        tender["link"]
+
+        for tender
+
+        in new_tenders
+
     )
 
-    for number, tender in enumerate(
-        unknown_tenders[:3],
-        start=1
-    ):
 
-        message += (
-            f"{number}. "
-            f"{tender['title']}\n"
-            f"Document: "
-            f"{tender['link']}\n\n"
-        )
+    save_seen(
+        sorted(seen)
+    )
 
 
-send_telegram(
-    message
-)
+    print(
 
+        "New tenders checked:",
 
-seen.update(
-    tender["link"]
-    for tender
-    in new_tenders
-)
+        len(new_tenders)
 
+    )
 
-save_seen(
-    sorted(seen)
-)
+    print(
 
+        "Active tenders:",
 
-print(
-    "New tenders checked:",
-    len(new_tenders)
-)
+        len(active_tenders)
 
-print(
-    "Active tenders:",
-    len(active_tenders)
-)
+    )
 
-print(
-    "Expired tenders:",
-    expired_count
-)
+    print(
 
-print(
-    "Date not found:",
-    len(unknown_tenders)
-)
+        "Expired tenders:",
+
+        expired_count
+
+    )
+
+    print(
+
+        "Date not found:",
+
+        len(unknown_tenders)
+
+    )
+
 
 except Exception as error:
 
