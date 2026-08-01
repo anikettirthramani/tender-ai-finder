@@ -1,12 +1,15 @@
 import os
+import json
 import requests
 from bs4 import BeautifulSoup
+from urllib.parse import urljoin
 from datetime import datetime
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-URL = "https://www.mahagenco.in/tenders"
+BASE_URL = "https://www.mahagenco.in"
+TENDER_URL = "https://www.mahagenco.in/tenders"
 
 KEYWORDS = [
     "fly ash",
@@ -30,8 +33,15 @@ KEYWORDS = [
     "loading"
 ]
 
+SEEN_FILE = "seen_tenders.json"
+
+
 def send_telegram(message):
-    api_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+
+    api_url = (
+        f"https://api.telegram.org/"
+        f"bot{BOT_TOKEN}/sendMessage"
+    )
 
     data = {
         "chat_id": CHAT_ID,
@@ -48,14 +58,44 @@ def send_telegram(message):
     response.raise_for_status()
 
 
-def get_tenders():
+def load_seen_tenders():
+
+    if not os.path.exists(SEEN_FILE):
+        return []
+
+    with open(
+        SEEN_FILE,
+        "r",
+        encoding="utf-8"
+    ) as file:
+
+        return json.load(file)
+
+
+def save_seen_tenders(tenders):
+
+    with open(
+        SEEN_FILE,
+        "w",
+        encoding="utf-8"
+    ) as file:
+
+        json.dump(
+            tenders,
+            file,
+            indent=2
+        )
+
+
+def get_matching_tenders():
 
     headers = {
-        "User-Agent": "Mozilla/5.0"
+        "User-Agent":
+        "Mozilla/5.0"
     }
 
     response = requests.get(
-        URL,
+        TENDER_URL,
         headers=headers,
         timeout=30
     )
@@ -67,58 +107,127 @@ def get_tenders():
         "html.parser"
     )
 
-    page_text = soup.get_text(
-        " ",
-        strip=True
+    matches = []
+
+    links = soup.find_all(
+        "a",
+        href=True
     )
 
-    found = []
+    for link in links:
 
-    for keyword in KEYWORDS:
+        title = link.get_text(
+            " ",
+            strip=True
+        )
 
-        if keyword.lower() in page_text.lower():
+        href = link.get(
+            "href"
+        )
 
-            found.append(keyword)
+        if not title:
+            continue
 
-    return found
+        title_lower = (
+            title.lower()
+        )
+
+        matched_words = [
+
+            keyword
+
+            for keyword in KEYWORDS
+
+            if keyword in title_lower
+
+        ]
+
+        if matched_words:
+
+            tender_link = urljoin(
+                BASE_URL,
+                href
+            )
+
+            tender = {
+                "title": title,
+                "link": tender_link,
+                "matched": matched_words
+            }
+
+            if tender not in matches:
+
+                matches.append(
+                    tender
+                )
+
+    return matches
 
 
 try:
 
-    matches = get_tenders()
+    seen = load_seen_tenders()
 
-    today = datetime.now().strftime(
-        "%d-%m-%Y"
+    tenders = (
+        get_matching_tenders()
     )
 
-    if matches:
+    new_tenders = [
+
+        tender
+
+        for tender in tenders
+
+        if tender["link"]
+        not in seen
+
+    ]
+
+    if new_tenders:
 
         message = (
-            "🔔 MAHAGENCO Tender Alert\n\n"
-            f"Date: {today}\n\n"
-            "Possible matching categories found:\n\n"
-            + "\n".join(
-                f"✅ {item}"
-                for item in matches
+            "🔔 NEW MAHAGENCO "
+            "TENDER ALERT\n\n"
+        )
+
+        for number, tender in enumerate(
+            new_tenders[:10],
+            start=1
+        ):
+
+            message += (
+                f"{number}. "
+                f"{tender['title']}\n"
+                f"Matched: "
+                f"{', '.join(tender['matched'])}\n"
+                f"Link: "
+                f"{tender['link']}\n\n"
             )
-            + "\n\nCheck official tender page:\n"
-            + URL
+
+        send_telegram(
+            message
+        )
+
+        seen.extend(
+            tender["link"]
+            for tender
+            in new_tenders
+        )
+
+        save_seen_tenders(
+            seen
+        )
+
+        print(
+            "New tender alerts sent."
         )
 
     else:
 
-        message = (
-            "📋 Tender search completed\n\n"
-            f"Date: {today}\n\n"
-            "No matching keyword was found "
-            "on the MAHAGENCO tender page today."
+        print(
+            "No new matching "
+            "tenders found."
         )
-
-    send_telegram(message)
-
-    print(
-        "Tender search completed successfully."
-    )
 
 except Exception as error:
 
@@ -127,6 +236,8 @@ except Exception as error:
         + str(error)
     )
 
-    send_telegram(error_message)
+    send_telegram(
+        error_message
+    )
 
     print(error)
