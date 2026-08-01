@@ -20,15 +20,14 @@ KEYWORDS = [
     "earthmoving",
     "dumper",
     "tipper",
-    "transportation",
-    "transport",
     "earthwork",
     "excavation",
     "construction material",
-    "sand",
-    "stone",
-    "aggregate",
-    "loading"
+    "sand supply",
+    "stone supply",
+    "aggregate supply",
+    "loading and transportation",
+    "lifting and transportation"
 ]
 
 
@@ -50,6 +49,47 @@ def send_telegram(message):
     )
 
     response.raise_for_status()
+
+
+def clean_text(text):
+
+    return " ".join(
+        text.split()
+    )
+
+
+def get_title_before_link(link):
+
+    previous = link.find_previous(
+        string=True
+    )
+
+    while previous:
+
+        title = clean_text(
+            str(previous)
+        )
+
+        if (
+            title
+            and title.lower()
+            not in [
+                "download",
+                "open tenders",
+                "awarded tenders"
+            ]
+            and len(title) > 10
+        ):
+
+            return title
+
+        previous = (
+            previous.find_previous(
+                string=True
+            )
+        )
+
+    return ""
 
 
 def get_matching_tenders():
@@ -77,38 +117,34 @@ def get_matching_tenders():
     )
 
     matches = []
-    seen_titles = set()
+    seen_links = set()
 
     for link in soup.find_all(
         "a",
         href=True
     ):
 
-        link_text = link.get_text(
-            " ",
-            strip=True
+        link_text = clean_text(
+            link.get_text(
+                " ",
+                strip=True
+            )
         ).lower()
 
-        if (
-            "download" not in link_text
-            and "tender" not in link_text
-        ):
+        if "download" not in link_text:
             continue
 
-        parent = link
-
-        for _ in range(5):
-
-            if parent.parent:
-                parent = parent.parent
-
-        block_text = parent.get_text(
-            " ",
-            strip=True
+        tender_title = (
+            get_title_before_link(
+                link
+            )
         )
 
-        block_lower = (
-            block_text.lower()
+        if not tender_title:
+            continue
+
+        title_lower = (
+            tender_title.lower()
         )
 
         matched_words = [
@@ -117,33 +153,27 @@ def get_matching_tenders():
 
             for keyword in KEYWORDS
 
-            if keyword in block_lower
+            if keyword in title_lower
 
         ]
 
         if not matched_words:
             continue
 
-        title = block_text
-
-        if len(title) > 700:
-
-            title = title[:700] + "..."
-
-        if title in seen_titles:
-            continue
-
-        seen_titles.add(
-            title
-        )
-
         tender_link = urljoin(
             BASE_URL,
             link["href"]
         )
 
+        if tender_link in seen_links:
+            continue
+
+        seen_links.add(
+            tender_link
+        )
+
         matches.append({
-            "title": title,
+            "title": tender_title,
             "link": tender_link,
             "matched": matched_words
         })
@@ -160,8 +190,8 @@ try:
     if tenders:
 
         message = (
-            "🔔 MAHAGENCO "
-            "MATCHING TENDERS\n\n"
+            "🔔 RELEVANT MAHAGENCO "
+            "TENDERS\n\n"
             f"Found: {len(tenders)}\n\n"
         )
 
@@ -184,8 +214,8 @@ try:
 
         message = (
             "📋 MAHAGENCO Search Complete\n\n"
-            "No matching tender blocks "
-            "were found."
+            "No relevant tender was found "
+            "for your selected categories."
         )
 
     send_telegram(
@@ -193,7 +223,7 @@ try:
     )
 
     print(
-        f"Matching tenders: "
+        f"Relevant tenders: "
         f"{len(tenders)}"
     )
 
