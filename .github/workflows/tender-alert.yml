@@ -23,9 +23,18 @@ jobs:
         run: |
           pip install -r requirements.txt
 
+
       - name: Run Tender Finder
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           python tender_finder.py
+
+      - name: Save seen tenders
+        run: |
+          git config user.name "Tender AI Bot"
+          git config user.email "tender-ai-bot@users.noreply.github.com"
+          git add seen_tenders.json
+          git diff --cached --quiet || git commit -m "Update seen tenders"
+          git push
